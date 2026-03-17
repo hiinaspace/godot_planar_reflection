@@ -25,10 +25,14 @@ void fragment() {
 	} else {
 		uv = UV;
 	}
+	// Compatibility renderer (OpenGL) has flipped Y for viewport textures
+	if (OUTPUT_IS_SRGB) {
+		uv.y = 1.0 - uv.y;
+	}
 	if (flip_x) {
 		uv = vec2(1.0 - uv.x, uv.y);
 	}
-	
+
 	if(uint(VIEW_INDEX)==0u)
 		ALBEDO = texture(textureL,uv).rgb;
 	else

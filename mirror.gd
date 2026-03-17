@@ -173,6 +173,15 @@ func render_view(p_interface: XRInterface, p_interface_cam: Camera3D, p_view_ind
 	if portal_relative_node != null and portal_relative_node != self:
 		portal_relative_matrix = global_transform_ortho.affine_inverse() * portal_relative_node.global_transform.orthonormalized() * portal_relative_matrix
 
+	var mirrored_p := p * Vector3(1,1,-1) * portal_relative_scale
+	var frustum_sign: float = -1
+	var extra_matrix := Transform3D.FLIP_X
+	if portal_is_mirror:
+		frustum_sign = 1
+		extra_matrix = Transform3D.IDENTITY
+
+	p_cam.global_transform = global_transform_ortho * portal_relative_matrix * extra_matrix * Transform3D(Basis.FLIP_X * Basis.FLIP_Z, mirrored_p) * extra_matrix
+
 	if use_screenspace:
 		var my_plane: Plane
 		my_plane = Plane(Vector3(0,0,-1),-2.0 * (global_transform_ortho.affine_inverse() * tx.origin).z)
@@ -189,13 +198,12 @@ func render_view(p_interface: XRInterface, p_interface_cam: Camera3D, p_view_ind
 		p_cam.set("override_projection", px)
 		_has_warned = false
 
-	var mirrored_p := p * Vector3(1,1,-1) * portal_relative_scale
-	var frustum_sign: float = -1
-	var extra_matrix := Transform3D.FLIP_X
-	if portal_is_mirror:
-		frustum_sign = 1
-		extra_matrix = Transform3D.IDENTITY
-	p_cam.global_transform = global_transform_ortho * portal_relative_matrix * extra_matrix * Transform3D(Basis.FLIP_X * Basis.FLIP_Z, mirrored_p) * extra_matrix
-	p_cam.set_frustum(global_transform.basis.get_scale().y * portal_relative_scale.y, Vector2(frustum_sign * mirrored_p.x,-mirrored_p.y), absf(mirrored_p.z), 10000)
+	var frustum_offset := Vector2(frustum_sign * mirrored_p.x, -mirrored_p.y)
+	if use_screenspace:
+		# Geometry uses override_projection in screenspace mode. Keep the camera's
+		# base frustum centered so mono sky/background passes don't inherit eye
+		# translation as apparent sky rotation/parallax.
+		frustum_offset = Vector2.ZERO
+	p_cam.set_frustum(global_transform.basis.get_scale().y * portal_relative_scale.y, frustum_offset, absf(mirrored_p.z), 10000)
 
 	RenderingServer.camera_set_transform(p_cam.get_camera_rid(), p_cam.global_transform)
