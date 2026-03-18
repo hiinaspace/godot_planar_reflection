@@ -11,13 +11,8 @@ void vertex() {
 	//render_mode cull_disabled, depth_test_disabled, depth_draw_always;
 	//POSITION = vec4(VERTEX.x * 2.0, VERTEX.y * (0.75 + 0.25 * sin(TIME)), 0.0, 1.0);
 }
-vec4 GammaToLinearSpace (vec4 sRGB)
-{
-	// Approximate version from http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html?m=1
-	return vec4(sRGB.rgb * (sRGB.rgb * (sRGB.rgb * 0.305306011 + 0.682171111) + 0.012522878), sRGB.a);
-}
-uniform sampler2D textureL;
-uniform sampler2D textureR;
+uniform sampler2D textureL: source_color;
+uniform sampler2D textureR: source_color;
 void fragment() {
 	vec2 uv;
 	if (use_screenspace) {
@@ -37,9 +32,6 @@ void fragment() {
 		ALBEDO = texture(textureL,uv).rgb;
 	else
 		ALBEDO = texture(textureR,uv).rgb;
-	if (!OUTPUT_IS_SRGB) {
-		ALBEDO = GammaToLinearSpace(vec4(ALBEDO, 1.0)).rgb;
-	}
 	ALBEDO *= albedo_color.rgb * texture(albedo_texture, UV).rgb;
 	
 	// Place fragment code here.

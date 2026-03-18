@@ -3,6 +3,7 @@
 # Originally from https://github.com/cheece/godot-vr-mirror-test-g4
 # Adapted by V-Sekai to support portals, chirality, non-vr and more.
 #
+@tool
 extends MeshInstance3D
 
 var _xr_origin: XROrigin3D
@@ -16,6 +17,7 @@ var _has_warned: bool = false
 # REQUIRES ENGINE PATCH TO WORK!
 @export var use_screenspace: bool
 @export var legacy_process_update: bool
+@export var update_in_editor: bool = true
 
 @export var mirror_resolution_scale: float = 1.0
 @export var portal_relative_node: Node3D = self
@@ -26,15 +28,57 @@ var _has_warned: bool = false
 
 
 func _find_origin_node() -> XROrigin3D:
-	var viewport: Viewport = get_viewport()
-	if not viewport:
-		return
-		
-	var camera_3d: Camera3D = viewport.get_camera_3d()
+	var camera_3d := _get_source_camera()
 	if not camera_3d:
 		return
 		
 	return camera_3d.get_parent() as XROrigin3D
+
+func _get_editor_camera() -> Camera3D:
+	if not Engine.is_editor_hint() or not update_in_editor:
+		return null
+
+	var editor_interface = Engine.get_singleton(&"EditorInterface")
+	if editor_interface == null:
+		return null
+
+	var editor_viewport: Viewport = editor_interface.get_editor_viewport_3d()
+	if editor_viewport == null:
+		return null
+
+	return editor_viewport.get_camera_3d()
+
+func _get_source_camera() -> Camera3D:
+	var editor_camera := _get_editor_camera()
+	if editor_camera != null:
+		return editor_camera
+
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return null
+
+	return viewport.get_camera_3d()
+
+func _get_source_viewport_size() -> Vector2:
+	var source_camera := _get_source_camera()
+	if source_camera != null:
+		var source_viewport := source_camera.get_viewport()
+		if source_viewport != null:
+			return Vector2(source_viewport.size)
+
+	var viewport: Viewport = get_viewport()
+	if viewport != null:
+		return Vector2(viewport.size)
+
+	return Vector2.ZERO
+
+func _sync_camera_render_settings(source_camera: Camera3D, target_camera: Camera3D) -> void:
+	if source_camera == null or target_camera == null:
+		return
+
+	target_camera.environment = source_camera.environment
+	target_camera.attributes = source_camera.attributes
+	target_camera.compositor = source_camera.compositor
 
 
 class PreRenderHookInterface:
@@ -58,9 +102,11 @@ func _ready():
 	if pre_render_hook == null:
 		pre_render_hook = PreRenderHookInterface.new()
 
-	pre_render_hook.pre_render.connect(frame_pre_draw)
+	if not pre_render_hook.pre_render.is_connected(frame_pre_draw):
+		pre_render_hook.pre_render.connect(frame_pre_draw)
 
-	RenderingServer.connect("frame_pre_draw", frame_pre_draw)
+	if not RenderingServer.is_connected("frame_pre_draw", frame_pre_draw):
+		RenderingServer.connect("frame_pre_draw", frame_pre_draw)
 	var m := get_surface_override_material(0)
 	m.set("shader_parameter/use_screenspace", use_screenspace)
 	m.set("shader_parameter/textureL", leftvp.get_texture())
@@ -76,11 +122,19 @@ func _process(_delta: float):
 		
 	_xr_origin = _find_origin_node()
 	
+	if Engine.is_editor_hint():
+		if update_in_editor:
+			update_mirror()
+		return
+
 	# if not updated from RenderingServer...
 	if legacy_process_update:
 		update_mirror()
 
 func frame_pre_draw():
+	if Engine.is_editor_hint():
+		return
+
 	if not legacy_process_update:
 		update_mirror()
 
@@ -89,7 +143,7 @@ func get_mirror_size() -> Vector2:
 	if(interface):
 		return interface.get_render_target_size()
 	else:
-		return Vector2(get_viewport().size)
+		return _get_source_viewport_size()
 
 func update_mirror() -> void:
 	var mirror_size: Vector2 = get_mirror_size() * mirror_resolution_scale
@@ -103,13 +157,19 @@ func update_mirror() -> void:
 		mirror_size = Vector2(mirror_size.x, mirror_size.x * aspect)
 	leftvp.size = mirror_size
 	rightvp.size = mirror_size
+
+	var source_camera := _get_source_camera()
+	_sync_camera_render_settings(source_camera, left_camera)
+	_sync_camera_render_settings(source_camera, right_camera)
 	
 	var interface: XRInterface = XRServer.primary_interface
 	if(interface and interface.get_tracking_status() != XRInterface.XR_NOT_TRACKING):
 		render_view(interface, null, 0, left_camera)
 		render_view(interface, null, 1, right_camera)
 	else:
-		var camera: Camera3D = get_viewport().get_camera_3d()
+		var camera := source_camera
+		if camera == null:
+			return
 		
 		render_view(null, camera, 0, left_camera)
 
