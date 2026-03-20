@@ -258,12 +258,14 @@ func render_view(p_interface: XRInterface, p_interface_cam: Camera3D, p_view_ind
 		p_cam.set("override_projection", px)
 		_has_warned = false
 
+	var frustum_size := global_transform.basis.get_scale().y * portal_relative_scale.y
 	var frustum_offset := Vector2(frustum_sign * mirrored_p.x, -mirrored_p.y)
 	if use_screenspace:
-		# Geometry uses override_projection in screenspace mode. Keep the camera's
-		# base frustum centered so mono sky/background passes don't inherit eye
-		# translation as apparent sky rotation/parallax.
+		# In screenspace mode, override_projection handles the actual rendering
+		# projection. The frustum from set_frustum() only affects culling, so widen
+		# it to prevent geometry visible in the reflection from being frustum-culled.
+		frustum_size *= 4.0
 		frustum_offset = Vector2.ZERO
-	p_cam.set_frustum(global_transform.basis.get_scale().y * portal_relative_scale.y, frustum_offset, absf(mirrored_p.z), 10000)
+	p_cam.set_frustum(frustum_size, frustum_offset, absf(mirrored_p.z), 10000)
 
 	RenderingServer.camera_set_transform(p_cam.get_camera_rid(), p_cam.global_transform)
